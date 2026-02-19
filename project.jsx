@@ -45,7 +45,7 @@ const IBADAH_TASKS = [
   { id: "tahajjud", label: "Tahajjud", rakah: "min 2 · max 8 Rakah", points: 25, category: "namaaz", icon: "star" },
   { id: "taraweeh", label: "Taraweeh", rakah: "min 8 · max 20 Rakah after Isha", points: 20, category: "namaaz", icon: "mosque" },
   { id: "sehri", label: "Sehri", points: 10, category: "sunnah", icon: "bowl" },
-  { id: "quran_para", label: "One Para Quran", points: 30, category: "quran", icon: "book" },
+  { id: "quran_recitation", label: "Quran Recitation", type: "number", goal: 200, unit: "verses", points: 30, category: "quran", icon: "book" },
   { id: "quran_verse", label: "Learn One Verse", points: 20, category: "quran", icon: "quill" },
   { id: "hadith", label: "Read a Hadith", points: 15, category: "knowledge", icon: "scroll" },
   { id: "dua", label: "Morning & Evening Dua", points: 10, category: "dua", icon: "hands" },
@@ -412,6 +412,8 @@ function AddTaskModal({ role, onAdd, onClose }) {
 export default function RamadanTracker() {
   const [screen, setScreen] = useState("splash");
   const [role, setRole] = useState(null);
+  const [userName, setUserName] = useState("");
+  const [tempName, setTempName] = useState("");
   const [activeDay, setActiveDay] = useState(1);
   const [allData, setAllData] = useState({ student: {}, professional: {}, general: {} });
   const [allCustom, setAllCustom] = useState({ student: [], professional: [], general: [] });
@@ -430,6 +432,7 @@ export default function RamadanTracker() {
     const load = () => {
       try {
         const r = localStorage.getItem("ram4_role"); if (r) setRole(r);
+        const name = localStorage.getItem("ram4_name"); if (name) setUserName(name);
         const d = localStorage.getItem("ram4_all_data"); if (d) setAllData(JSON.parse(d));
         const c = localStorage.getItem("ram4_all_custom"); if (c) setAllCustom(JSON.parse(c));
       } catch (e) { console.error("Load error:", e); }
@@ -438,10 +441,11 @@ export default function RamadanTracker() {
     load();
   }, []);
 
-  const persist = useCallback((data, ct) => {
+  const persist = useCallback((data, ct, name) => {
     try {
       localStorage.setItem("ram4_all_data", JSON.stringify(data));
       if (ct !== undefined) localStorage.setItem("ram4_all_custom", JSON.stringify(ct));
+      if (name !== undefined) localStorage.setItem("ram4_name", name);
     } catch (e) { console.error("Persist error:", e); }
   }, []);
 
@@ -456,7 +460,13 @@ export default function RamadanTracker() {
     const dData = rData[d] || {};
     const rCustom = allCustom[r] || [];
     const rTasks = [...IBADAH_TASKS, ...(DEFAULT_ROLE_TASKS[r] || []), ...rCustom];
-    return rTasks.reduce((s, t) => s + (dData[t.id] ? t.points : 0), 0);
+    return rTasks.reduce((s, t) => {
+      const val = dData[t.id];
+      if (t.type === "number") {
+        return s + (val ? (Math.min(val, t.goal) / t.goal) * t.points : 0);
+      }
+      return s + (val ? t.points : 0);
+    }, 0);
   };
 
   const getDayMaxPts = (r = role) => {
@@ -470,11 +480,19 @@ export default function RamadanTracker() {
 
   useEffect(() => { if (pct === 100 && prevPct < 100) fire(); setPrevPct(pct); }, [pct]);
 
-  const toggleTask = id => {
-    const updatedRoleData = { ...currentRoleData, [activeDay]: { ...todayData, [id]: !todayData[id] } };
+  const toggleTask = (id, val) => {
+    const currentVal = todayData[id];
+    const task = allTasks.find(t => t.id === id);
+    let newVal;
+    if (task?.type === "number") {
+      newVal = val;
+    } else {
+      newVal = !currentVal;
+    }
+    const updatedRoleData = { ...currentRoleData, [activeDay]: { ...todayData, [id]: newVal } };
     const newAllData = { ...allData, [role]: updatedRoleData };
     setAllData(newAllData); persist(newAllData, allCustom);
-    if (!todayData[id]) { setJustChecked(id); setTimeout(() => setJustChecked(null), 700); }
+    if (!currentVal && !task?.type) { setJustChecked(id); setTimeout(() => setJustChecked(null), 700); }
   };
 
   const addCustomTask = task => {
@@ -561,13 +579,19 @@ export default function RamadanTracker() {
         <div style={{ maxWidth: 420, width: "100%", textAlign: "center", animation: "onboardIn 0.7s cubic-bezier(0.16,1,0.3,1)" }}>
           <div style={{ fontFamily: "Georgia,serif", color: C.gold, fontSize: 44, marginBottom: 6, letterSpacing: 3, textShadow: `0 2px 20px rgba(184,134,11,0.2)` }}>رمضان</div>
           <h1 style={{ fontFamily: "Georgia,serif", color: C.ink, fontSize: 26, fontWeight: 600, marginBottom: 6 }}>Ramadan Tracker</h1>
-          <p style={{ color: C.faint, fontSize: 11, fontWeight: 300, marginBottom: 38, letterSpacing: 1.5, textTransform: "uppercase" }}>2026 · Choose your path</p>
+          <p style={{ color: C.faint, fontSize: 11, fontWeight: 300, marginBottom: 30, letterSpacing: 1.5, textTransform: "uppercase" }}>2026 · Personalized Ibadah</p>
 
           <div style={{ background: C.surface, borderRadius: 22, padding: "26px 20px", border: `1px solid ${C.border}`, boxShadow: C.shadow }}>
-            <p style={{ color: C.faint, fontSize: 9, fontWeight: 600, letterSpacing: 3, textTransform: "uppercase", marginBottom: 20 }}>I am a…</p>
+            <div style={{ marginBottom: 24, textAlign: "left" }}>
+              <label style={{ display: "block", color: C.faint, fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>What is your name?</label>
+              <input type="text" value={tempName} onChange={e => setTempName(e.target.value)} placeholder="Enter your name..."
+                style={{ width: "100%", background: C.bg, border: `1.5px solid ${C.border}`, borderRadius: 12, padding: "12px 16px", color: C.ink, fontSize: 16, outline: "none", transition: "all 0.2s" }} />
+            </div>
+
+            <p style={{ color: C.faint, fontSize: 9, fontWeight: 600, letterSpacing: 3, textTransform: "uppercase", marginBottom: 15 }}>I am a…</p>
             {[["student", "study", "Student", "Ibadah + academic goals"], ["professional", "target", "Professional", "Ibadah + career goals"], ["general", "hands", "General", "Pure Ibadah focus"]].map(([r, ico, lbl, desc]) => (
-              <button key={r} onClick={() => { setRole(r); setScreen("app"); try { localStorage.setItem("ram4_role", r); } catch (e) { console.error("Role save error:", e); } }}
-                style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", padding: "14px 16px", marginBottom: 10, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}
+              <button key={r} onClick={() => { if (!tempName.trim()) return alert("Please enter your name first!"); setUserName(tempName.trim()); setRole(r); setScreen("app"); persist(allData, allCustom, tempName.trim()); try { localStorage.setItem("ram4_role", r); } catch (e) { console.error("Role save error:", e); } }}
+                style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", padding: "14px 16px", marginBottom: 10, background: C.bg, border: `1px solid ${tempName.trim() ? C.border : C.ghost}`, borderRadius: 14, cursor: tempName.trim() ? "pointer" : "default", textAlign: "left", transition: "all 0.2s", opacity: tempName.trim() ? 1 : 0.6 }}
                 onMouseEnter={e => { e.currentTarget.style.background = C.goldPale; e.currentTarget.style.borderColor = C.borderStrong; }}
                 onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; }}>
                 <div style={{ width: 42, height: 42, borderRadius: 12, background: C.goldPale, border: `1px solid ${C.borderStrong}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -608,7 +632,7 @@ export default function RamadanTracker() {
           <div style={{ maxWidth: 520, margin: "0 auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <div>
-                <div style={{ fontFamily: "Georgia,serif", color: C.gold, fontSize: 12, letterSpacing: 2 }}>🌙 RAMADAN {new Date().getFullYear()}</div>
+                <div style={{ fontFamily: "Georgia,serif", color: C.gold, fontSize: 12, letterSpacing: 2 }}>🌙 SALAM, {userName.toUpperCase()}</div>
                 <div style={{ color: C.faint, fontSize: 11, fontWeight: 300, marginTop: 2 }}>
                   {role === "student" ? "Student" : role === "professional" ? "Professional" : "General"} · Day {activeDay} of 30
                 </div>
@@ -694,37 +718,54 @@ export default function RamadanTracker() {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {group.tasks.map(task => {
-                    const done = !!todayData[task.id]; const animating = justChecked === task.id;
+                    const val = todayData[task.id];
+                    const done = task.type === "number" ? val >= task.goal : !!val;
+                    const animating = justChecked === task.id;
                     const isCustom = currentRoleCustom.find(ct => ct.id === task.id);
                     const iconColor = ICON_COLORS[task.category] || group.color;
                     return (
-                      <div key={task.id} style={{ display: "flex", alignItems: "stretch", animation: animating ? "checkPop 0.5s ease" : undefined }}>
-                        <button onClick={() => toggleTask(task.id)} style={{
-                          flex: 1, display: "flex", alignItems: "center", gap: 13, padding: "12px 14px",
-                          background: done ? C.greenBg : C.surface,
-                          border: `1.5px solid ${done ? C.greenBorder : C.border}`,
-                          borderRadius: isCustom ? "13px 0 0 13px" : "13px",
-                          cursor: "pointer", textAlign: "left", transition: "all 0.2s",
-                          boxShadow: done ? "none" : C.shadow
-                        }}>
-                          <div style={{ width: 23, height: 23, borderRadius: 7, border: `2px solid ${done ? C.green : C.border}`, background: done ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.25s" }}>
-                            {done && <Icon name="check" size={12} color="#FFFDF7" />}
-                          </div>
-                          <div style={{ width: 33, height: 33, borderRadius: 9, background: `${iconColor}12`, border: `1px solid ${iconColor}25`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <Icon name={task.icon} size={16} color={done ? `${iconColor}55` : iconColor} />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ color: done ? C.green : C.body, fontWeight: 500, fontSize: 13.5, textDecoration: done ? "line-through" : "none", transition: "all 0.2s" }}>{task.label}</div>
-                            {task.rakah && <div style={{ color: C.faint, fontSize: 10, marginTop: 2, fontWeight: 300 }}>{task.rakah}</div>}
-                          </div>
-                          <div style={{ color: done ? C.green : C.faint, fontSize: 11, fontWeight: 700, flexShrink: 0, fontFamily: "Georgia,serif" }}>+{task.points}</div>
-                        </button>
-                        {isCustom && (
-                          <button onClick={() => removeCustomTask(task.id)} style={{ padding: "0 12px", background: C.surface, border: `1.5px solid ${C.border}`, borderLeft: "none", borderRadius: "0 13px 13px 0", cursor: "pointer", display: "flex", alignItems: "center", transition: "all 0.15s", boxShadow: C.shadow }}
-                            onMouseEnter={e => e.currentTarget.style.background = "#FEF0EE"}
-                            onMouseLeave={e => e.currentTarget.style.background = C.surface}>
-                            <Icon name="trash" size={14} color={C.faint} />
+                      <div key={task.id} style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                        <div style={{ display: "flex", alignItems: "stretch", animation: animating ? "checkPop 0.5s ease" : undefined }}>
+                          <button onClick={() => task.type !== "number" && toggleTask(task.id)} style={{
+                            flex: 1, display: "flex", alignItems: "center", gap: 13, padding: "12px 14px",
+                            background: done ? C.greenBg : C.surface,
+                            border: `1.5px solid ${done ? C.greenBorder : C.border}`,
+                            borderRadius: isCustom ? "13px 0 0 13px" : "13px",
+                            cursor: task.type === "number" ? "default" : "pointer", textAlign: "left", transition: "all 0.2s",
+                            boxShadow: done ? "none" : C.shadow
+                          }}>
+                            <div style={{ width: 23, height: 23, borderRadius: 7, border: `2px solid ${done ? C.green : C.border}`, background: done ? C.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.25s" }}>
+                              {done && <Icon name="check" size={12} color="#FFFDF7" />}
+                              {task.type === "number" && !done && <div style={{ fontSize: 9, fontWeight: 700, color: C.faint }}>{Math.round((val || 0) / task.goal * 100)}%</div>}
+                            </div>
+                            <div style={{ width: 33, height: 33, borderRadius: 9, background: `${iconColor}12`, border: `1px solid ${iconColor}25`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <Icon name={task.icon} size={16} color={done ? `${iconColor}55` : iconColor} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ color: done ? C.green : C.body, fontWeight: 500, fontSize: 13.5, textDecoration: done ? "line-through" : "none", transition: "all 0.2s" }}>{task.label}</div>
+                              {task.type === "number" ? (
+                                <div style={{ color: C.faint, fontSize: 10, marginTop: 2, fontWeight: 300 }}>Read {val || 0} / {task.goal} {task.unit}</div>
+                              ) : task.rakah ? (
+                                <div style={{ color: C.faint, fontSize: 10, marginTop: 2, fontWeight: 300 }}>{task.rakah}</div>
+                              ) : null}
+                            </div>
+                            <div style={{ color: done ? C.green : C.faint, fontSize: 11, fontWeight: 700, flexShrink: 0, fontFamily: "Georgia,serif" }}>
+                              +{task.type === "number" ? Math.round(((val || 0) / task.goal) * task.points) : task.points}
+                            </div>
                           </button>
+                          {isCustom && (
+                            <button onClick={() => removeCustomTask(task.id)} style={{ padding: "0 12px", background: C.surface, border: `1.5px solid ${C.border}`, borderLeft: "none", borderRadius: "0 13px 13px 0", cursor: "pointer", display: "flex", alignItems: "center", transition: "all 0.15s", boxShadow: C.shadow }}
+                              onMouseEnter={e => e.currentTarget.style.background = "#FEF0EE"}
+                              onMouseLeave={e => e.currentTarget.style.background = C.surface}>
+                              <Icon name="trash" size={14} color={C.faint} />
+                            </button>
+                          )}
+                        </div>
+                        {task.type === "number" && (
+                          <div style={{ padding: "8px 14px 12px", background: C.surface, border: `1.5px solid ${C.border}`, borderTop: "none", borderRadius: "0 0 13px 13px", marginTop: -1 }}>
+                            <input type="range" min="0" max={task.goal} value={val || 0} onChange={e => toggleTask(task.id, parseInt(e.target.value))}
+                              style={{ width: "100%", height: 6, accentColor: C.gold }} />
+                          </div>
                         )}
                       </div>
                     );
@@ -738,14 +779,17 @@ export default function RamadanTracker() {
           {activeTab === "progress" && <>
             {/* Certificate Bold Line */}
             <div style={{ background: C.surface, border: `2.5px solid ${C.gold}`, borderRadius: 16, padding: "20px", marginBottom: 22, textAlign: "center", boxShadow: C.shadowMd, animation: "fadeInUp 0.6s ease" }}>
-              <div style={{ color: C.ink, fontSize: 13, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, opacity: 0.9 }}>Achievement Status</div>
+              <div style={{ color: C.ink, fontSize: 13, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, opacity: 0.9 }}>Monthly Achievement Status</div>
               {cert ? (
-                <div style={{ fontSize: 22, fontWeight: 900, color: cert.color, fontFamily: "Georgia,serif", textShadow: "0 2px 10px rgba(0,0,0,0.1)", animation: "checkPop 0.8s ease" }}>
-                  🏆 {cert.lbl}
+                <div style={{ animation: "checkPop 0.8s ease" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.gold, marginBottom: 5 }}>Awarded to: {userName.toUpperCase()}</div>
+                  <div style={{ fontSize: 19, fontWeight: 900, color: cert.color, fontFamily: "Georgia,serif", textShadow: "0 2px 10px rgba(0,0,0,0.1)" }}>
+                    🏆 {cert.lbl}
+                  </div>
                 </div>
               ) : (
                 <div style={{ fontSize: 16, fontWeight: 700, color: C.faint, fontStyle: "italic" }}>
-                  Reach 60% average completion for Bronze
+                  {userName}, reach 60% average for Bronze
                 </div>
               )}
               <div style={{ width: "100%", height: 6, background: C.ghost, borderRadius: 10, marginTop: 15, overflow: "hidden" }}>
