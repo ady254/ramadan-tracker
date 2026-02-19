@@ -413,8 +413,8 @@ export default function RamadanTracker() {
   const [screen, setScreen] = useState("splash");
   const [role, setRole] = useState(null);
   const [activeDay, setActiveDay] = useState(1);
-  const [allDaysData, setAllDaysData] = useState({});
-  const [customTasks, setCustomTasks] = useState([]);
+  const [allData, setAllData] = useState({ student: {}, professional: {}, general: {} });
+  const [allCustom, setAllCustom] = useState({ student: [], professional: [], general: [] });
   const [activeTab, setActiveTab] = useState("today");
   const [badgeModal, setBadgeModal] = useState(null);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -430,8 +430,8 @@ export default function RamadanTracker() {
     const load = () => {
       try {
         const r = localStorage.getItem("ram4_role"); if (r) setRole(r);
-        const d = localStorage.getItem("ram4_data"); if (d) setAllDaysData(JSON.parse(d));
-        const c = localStorage.getItem("ram4_custom"); if (c) setCustomTasks(JSON.parse(c));
+        const d = localStorage.getItem("ram4_all_data"); if (d) setAllData(JSON.parse(d));
+        const c = localStorage.getItem("ram4_all_custom"); if (c) setAllCustom(JSON.parse(c));
       } catch (e) { console.error("Load error:", e); }
       setLoaded(true);
     };
@@ -440,15 +440,30 @@ export default function RamadanTracker() {
 
   const persist = useCallback((data, ct) => {
     try {
-      localStorage.setItem("ram4_data", JSON.stringify(data));
-      if (ct !== undefined) localStorage.setItem("ram4_custom", JSON.stringify(ct));
+      localStorage.setItem("ram4_all_data", JSON.stringify(data));
+      if (ct !== undefined) localStorage.setItem("ram4_all_custom", JSON.stringify(ct));
     } catch (e) { console.error("Persist error:", e); }
   }, []);
 
-  const allTasks = [...IBADAH_TASKS, ...(DEFAULT_ROLE_TASKS[role] || []), ...customTasks];
-  const todayData = allDaysData[activeDay] || {};
-  const getDayPts = d => { const dd = allDaysData[d] || {}; return allTasks.reduce((s, t) => s + (dd[t.id] ? t.points : 0), 0); };
-  const maxPts = allTasks.reduce((s, t) => s + t.points, 0);
+  // Role-scoped accessors
+  const currentRoleData = allData[role] || {};
+  const currentRoleCustom = allCustom[role] || [];
+  const allTasks = [...IBADAH_TASKS, ...(DEFAULT_ROLE_TASKS[role] || []), ...currentRoleCustom];
+  const todayData = currentRoleData[activeDay] || {};
+
+  const getDayPts = (d, r = role) => {
+    const rData = allData[r] || {};
+    const dData = rData[d] || {};
+    const rCustom = allCustom[r] || [];
+    const rTasks = [...IBADAH_TASKS, ...(DEFAULT_ROLE_TASKS[r] || []), ...rCustom];
+    return rTasks.reduce((s, t) => s + (dData[t.id] ? t.points : 0), 0);
+  };
+
+  const getDayMaxPts = (r = role) => {
+    const rCustom = allCustom[r] || [];
+    return [...IBADAH_TASKS, ...(DEFAULT_ROLE_TASKS[r] || []), ...rCustom].reduce((s, t) => s + t.points, 0);
+  };
+  const maxPts = getDayMaxPts();
   const todayPts = getDayPts(activeDay);
   const pct = maxPts ? Math.round((todayPts / maxPts) * 100) : 0;
   const completedCount = allTasks.filter(t => todayData[t.id]).length;
@@ -456,22 +471,37 @@ export default function RamadanTracker() {
   useEffect(() => { if (pct === 100 && prevPct < 100) fire(); setPrevPct(pct); }, [pct]);
 
   const toggleTask = id => {
-    const updated = { ...todayData, [id]: !todayData[id] };
-    const newAll = { ...allDaysData, [activeDay]: updated };
-    setAllDaysData(newAll); persist(newAll);
+    const updatedRoleData = { ...currentRoleData, [activeDay]: { ...todayData, [id]: !todayData[id] } };
+    const newAllData = { ...allData, [role]: updatedRoleData };
+    setAllData(newAllData); persist(newAllData, allCustom);
     if (!todayData[id]) { setJustChecked(id); setTimeout(() => setJustChecked(null), 700); }
   };
-  const addCustomTask = task => { const nc = [...customTasks, task]; setCustomTasks(nc); persist(allDaysData, nc); };
-  const removeCustomTask = id => { const nc = customTasks.filter(t => t.id !== id); setCustomTasks(nc); persist(allDaysData, nc); };
+
+  const addCustomTask = task => {
+    const newRoleCustom = [...currentRoleCustom, task];
+    const newAllCustom = { ...allCustom, [role]: newRoleCustom };
+    setAllCustom(newAllCustom); persist(allData, newAllCustom);
+  };
+
+  const removeCustomTask = id => {
+    const newRoleCustom = currentRoleCustom.filter(t => t.id !== id);
+    const newAllCustom = { ...allCustom, [role]: newRoleCustom };
+    setAllCustom(newAllCustom); persist(allData, newAllCustom);
+  };
 
   const getStats = () => {
     let totalPoints = 0, perfectDays = 0, maxStreak = 0, streak = 0;
     let tahajjudStreak = 0, quranStreak = 0, allPrayersStreak = 0, taraweehStreak = 0;
-    let daysTracked = Object.keys(allDaysData).filter(d => Object.values(allDaysData[d] || {}).some(Boolean)).length;
+    let daysTracked = 0;
     let [ct, cq, cp, ctr] = [0, 0, 0, 0];
+
     for (let d = 1; d <= 30; d++) {
-      const dd = allDaysData[d] || {};
-      totalPoints += allTasks.reduce((s, t) => s + (dd[t.id] ? t.points : 0), 0);
+      const dd = currentRoleData[d] || {};
+      const dMax = getDayMaxPts();
+      const dPts = getDayPts(d);
+      if (Object.values(dd).some(Boolean)) daysTracked++;
+
+      totalPoints += dPts;
       const perfect = allTasks.every(t => dd[t.id]);
       perfect ? (streak++, maxStreak = Math.max(maxStreak, streak), perfectDays++) : (streak = 0);
       dd.tahajjud ? (ct++, tahajjudStreak = Math.max(tahajjudStreak, ct)) : (ct = 0);
@@ -479,10 +509,12 @@ export default function RamadanTracker() {
       dd.taraweeh ? (ctr++, taraweehStreak = Math.max(taraweehStreak, ctr)) : (ctr = 0);
       ["fajr", "zuhr", "asr", "maghrib", "isha"].every(p => dd[p]) ? (cp++, allPrayersStreak = Math.max(allPrayersStreak, cp)) : (cp = 0);
     }
-    return { totalPoints, perfectDays, maxStreak, tahajjudStreak, quranStreak, allPrayersStreak, taraweehStreak, daysTracked };
+    const avgPct = daysTracked ? (totalPoints / (daysTracked * maxPts)) * 100 : 0;
+    return { totalPoints, perfectDays, maxStreak, tahajjudStreak, quranStreak, allPrayersStreak, taraweehStreak, daysTracked, avgPct };
   };
 
   const stats = getStats();
+  const cert = stats.avgPct >= 85 ? { lbl: "Gold Badge Certificate", color: "#FFD700" } : stats.avgPct >= 75 ? { lbl: "Silver Badge Certificate", color: "#C0C0C0" } : stats.avgPct >= 60 ? { lbl: "Bronze Badge Certificate", color: "#CD7F32" } : null;
   const earnedBadges = BADGES.filter(b => b.condition(stats));
   const roleColor = role === "student" ? "#2A6FAB" : role === "professional" ? C.gold : "#2D7A52";
 
@@ -704,6 +736,24 @@ export default function RamadanTracker() {
 
           {/* PROGRESS */}
           {activeTab === "progress" && <>
+            {/* Certificate Bold Line */}
+            <div style={{ background: C.surface, border: `2.5px solid ${C.gold}`, borderRadius: 16, padding: "20px", marginBottom: 22, textAlign: "center", boxShadow: C.shadowMd, animation: "fadeInUp 0.6s ease" }}>
+              <div style={{ color: C.ink, fontSize: 13, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, opacity: 0.9 }}>Achievement Status</div>
+              {cert ? (
+                <div style={{ fontSize: 22, fontWeight: 900, color: cert.color, fontFamily: "Georgia,serif", textShadow: "0 2px 10px rgba(0,0,0,0.1)", animation: "checkPop 0.8s ease" }}>
+                  🏆 {cert.lbl}
+                </div>
+              ) : (
+                <div style={{ fontSize: 16, fontWeight: 700, color: C.faint, fontStyle: "italic" }}>
+                  Reach 60% average completion for Bronze
+                </div>
+              )}
+              <div style={{ width: "100%", height: 6, background: C.ghost, borderRadius: 10, marginTop: 15, overflow: "hidden" }}>
+                <div style={{ width: `${Math.min(100, stats.avgPct)}%`, height: "100%", background: cert ? cert.color : C.gold, transition: "width 1s ease" }} />
+              </div>
+              <div style={{ marginTop: 8, fontSize: 11, fontWeight: 600, color: C.muted }}>Current Average: {Math.round(stats.avgPct)}%</div>
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>
               {[{ label: "Total Points", value: stats.totalPoints, icon: "gem", color: C.gold }, { label: "Perfect Days", value: stats.perfectDays, icon: "star", color: C.green }, { label: "Best Streak", value: `${stats.maxStreak}d`, icon: "flame", color: "#C04A20" }, { label: "Badges", value: `${earnedBadges.length}/${BADGES.length}`, icon: "trophy", color: "#8B4DAB" }].map(s => (
                 <div key={s.label} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "16px 15px", boxShadow: C.shadow }}>
