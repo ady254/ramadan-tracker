@@ -522,9 +522,9 @@ export default function RamadanTracker() {
     { label: "Namaaz", color: ICON_COLORS.namaaz, tasks: IBADAH_TASKS.filter(t => t.category === "namaaz") },
     { label: "Quran", color: ICON_COLORS.quran, tasks: IBADAH_TASKS.filter(t => t.category === "quran") },
     { label: "Sunnah & Dua", color: ICON_COLORS.dua, tasks: IBADAH_TASKS.filter(t => ["sunnah", "dua", "knowledge"].includes(t.category)) },
-    ...([...(DEFAULT_ROLE_TASKS[role] || []), ...customTasks].length ? [{
+    ...([...(DEFAULT_ROLE_TASKS[role] || []), ...currentRoleCustom].length ? [{
       label: role === "student" ? "Student Goals" : role === "professional" ? "Work Goals" : "",
-      color: roleColor, tasks: [...(DEFAULT_ROLE_TASKS[role] || []), ...customTasks], isRole: true,
+      color: roleColor, tasks: [...(DEFAULT_ROLE_TASKS[role] || []), ...currentRoleCustom], isRole: true,
     }] : []),
   ].filter(g => g.tasks.length || g.isRole);
 
@@ -695,7 +695,7 @@ export default function RamadanTracker() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {group.tasks.map(task => {
                     const done = !!todayData[task.id]; const animating = justChecked === task.id;
-                    const isCustom = customTasks.find(ct => ct.id === task.id);
+                    const isCustom = currentRoleCustom.find(ct => ct.id === task.id);
                     const iconColor = ICON_COLORS[task.category] || group.color;
                     return (
                       <div key={task.id} style={{ display: "flex", alignItems: "stretch", animation: animating ? "checkPop 0.5s ease" : undefined }}>
