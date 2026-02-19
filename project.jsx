@@ -427,19 +427,22 @@ export default function RamadanTracker() {
   useEffect(() => { const t = setInterval(() => setVerseIdx(i => (i + 1) % VERSES.length), 8000); return () => clearInterval(t); }, []);
 
   useEffect(() => {
-    const load = async () => {
+    const load = () => {
       try {
-        const r = await window.storage.get("ram4_role"); if (r) setRole(r.value);
-        const d = await window.storage.get("ram4_data"); if (d) setAllDaysData(JSON.parse(d.value));
-        const c = await window.storage.get("ram4_custom"); if (c) setCustomTasks(JSON.parse(c.value));
-      } catch { }
+        const r = localStorage.getItem("ram4_role"); if (r) setRole(r);
+        const d = localStorage.getItem("ram4_data"); if (d) setAllDaysData(JSON.parse(d));
+        const c = localStorage.getItem("ram4_custom"); if (c) setCustomTasks(JSON.parse(c));
+      } catch (e) { console.error("Load error:", e); }
       setLoaded(true);
     };
     load();
   }, []);
 
-  const persist = useCallback(async (data, ct) => {
-    try { await window.storage.set("ram4_data", JSON.stringify(data)); if (ct !== undefined) await window.storage.set("ram4_custom", JSON.stringify(ct)); } catch { }
+  const persist = useCallback((data, ct) => {
+    try {
+      localStorage.setItem("ram4_data", JSON.stringify(data));
+      if (ct !== undefined) localStorage.setItem("ram4_custom", JSON.stringify(ct));
+    } catch (e) { console.error("Persist error:", e); }
   }, []);
 
   const allTasks = [...IBADAH_TASKS, ...(DEFAULT_ROLE_TASKS[role] || []), ...customTasks];
@@ -531,7 +534,7 @@ export default function RamadanTracker() {
           <div style={{ background: C.surface, borderRadius: 22, padding: "26px 20px", border: `1px solid ${C.border}`, boxShadow: C.shadow }}>
             <p style={{ color: C.faint, fontSize: 9, fontWeight: 600, letterSpacing: 3, textTransform: "uppercase", marginBottom: 20 }}>I am a…</p>
             {[["student", "study", "Student", "Ibadah + academic goals"], ["professional", "target", "Professional", "Ibadah + career goals"], ["general", "hands", "General", "Pure Ibadah focus"]].map(([r, ico, lbl, desc]) => (
-              <button key={r} onClick={async () => { setRole(r); setScreen("app"); try { await window.storage.set("ram4_role", r); } catch { } }}
+              <button key={r} onClick={() => { setRole(r); setScreen("app"); try { localStorage.setItem("ram4_role", r); } catch (e) { console.error("Role save error:", e); } }}
                 style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", padding: "14px 16px", marginBottom: 10, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}
                 onMouseEnter={e => { e.currentTarget.style.background = C.goldPale; e.currentTarget.style.borderColor = C.borderStrong; }}
                 onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border; }}>
